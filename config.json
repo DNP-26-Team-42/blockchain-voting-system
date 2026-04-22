@@ -1,0 +1,24 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "timeout": 30
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "voting_system",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  "blockchain": {
+    "difficulty": 4,
+    "mining_reward": 1,
+    "block_size": 100
+  },
+  "voting": {
+    "enable_anonymous": true,
+    "require_registration": true,
+    "voting_duration_hours": 24
+  }
+}
