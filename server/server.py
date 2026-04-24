@@ -1,164 +1,194 @@
 """
-Voting Server - Blockchain-based centralized voting system.
-Manages blockchain, processes votes, and handles client connections.
+Main server module for the voting system.
+Handles client requests, blockchain operations and database interaction.
 """
 
-import sys
-import json
+from typing import Dict, Any, Tuple
 import threading
-from typing import Optional, Dict, Any
-from datetime import datetime
-from pathlib import Path
+import logging
 
-# from blockchain import Blockchain
-# from crypto import CryptoManager
-# from database import DatabaseConnection, Voter
-# from network import SocketServer, NetworkMessage
+from server.network import SocketServer, NetworkMessage
+from server.blockchain import Blockchain
+from server.database import DatabaseManager
+from server.config import ConfigLoader
+from server.logger import setup_logging
 
 
 class VotingServer:
-    """Main voting server with CLI interface and network handling."""
+    """Main voting server class."""
 
-    def __init__(self, host: str, port: int, db_config: Dict[str, Any]):
-        """Initialize voting server."""
-        self.host = host
-        self.port = port
-        self.db_config = db_config
-        self.running = True
+    def __init__(self, config_path: str = "config.json"):
+        self.config_loader = ConfigLoader(config_path)
+        success, config = self.config_loader.load()
 
-        # Components to initialize
-        # self.blockchain = None
-        # self.database = None
-        # self.network_server = None
-        # self.crypto = CryptoManager()
+        if not success:
+            raise RuntimeError("Failed to load configuration")
 
-    def initialize_components(self) -> bool:
-        """Initialize blockchain, database, and network components."""
-        pass
+        self.config = config
 
-    def start_network_server(self) -> bool:
-        """Start socket server in background thread."""
-        pass
+        # logger
+        log_file = config["logging"].get("file")
+        log_level = getattr(logging, config["logging"].get("level", "INFO"))
+        self.logger = setup_logging(__name__, log_file, log_level)
 
-    def register_network_handlers(self) -> None:
-        """Register message handlers for different message types."""
-        pass
+        # blockchain + db
+        self.blockchain = Blockchain(
+            difficulty=config["blockchain"]["difficulty"],
+            max_votes_per_block=config["blockchain"]["block_size"],
+        )
 
-    def handle_register_voter(self, message_payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle voter registration request."""
-        pass
+        self.database = DatabaseManager()
 
-    def handle_vote_submission(self, message_payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle vote submission from client."""
-        pass
+        # network
+        self.server = SocketServer(
+            config["server"]["host"],
+            config["server"]["port"],
+            config["server"]["timeout"]
+        )
 
-    def handle_verify_vote(self, message_payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle vote verification request."""
-        pass
+        self._register_handlers()
 
-    def handle_get_results(self) -> Dict[str, Any]:
-        """Handle results query request."""
-        pass
+    def _register_handlers(self) -> None:
+        self.server.register_handler("register", self.handle_register)
+        self.server.register_handler("vote", self.handle_vote)
+        self.server.register_handler("verify", self.handle_verify)
+        self.server.register_handler("results", self.handle_results)
+        self.server.register_handler("status", self.handle_status)
+        self.server.register_handler("candidates", self.handle_candidates)
 
-    def handle_blockchain_status(self) -> Dict[str, Any]:
-        """Handle blockchain status request."""
-        pass
+    def start(self) -> Tuple[bool, str]:
+        ok, msg = self.server.start()
 
-    def mine_block(self) -> bool:
-        """Trigger mining of pending votes into a block."""
-        pass
+        if not ok:
+            return ok, msg
 
-    def validate_vote(self, voter_id: str, candidate: str) -> tuple[bool, str]:
-        """Validate a vote before accepting it."""
-        pass
+        thread = threading.Thread(target=self.server.accept_connections, daemon=True)
+        thread.start()
 
-    def shutdown(self) -> None:
-        """Gracefully shutdown server."""
-        pass
+        self.logger.info("Server started")
 
-    def run_cli(self) -> None:
-        """Run interactive CLI interface."""
-        pass
+        return True, "Server running"
 
-    def display_menu(self) -> None:
-        """Display CLI menu."""
-        pass
+    def stop(self) -> None:
+        self.server.stop()
+        self.database.close()
+        self.logger.info("Server stopped")
 
-    def cmd_status(self) -> None:
-        """CLI: Show server and blockchain status."""
-        pass
+    # ================= HANDLERS =================
 
-    def cmd_mine(self) -> None:
-        """CLI: Mine pending votes."""
-        pass
+    def handle_register(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        name = payload.get("name")
+        surname = payload.get("surname")
+        id_number = payload.get("id_number")
 
-    def cmd_view_votes(self) -> None:
-        """CLI: View all votes in blockchain."""
-        pass
+        if not all([name, surname, id_number]):
+            return {"error": "Missing registration fields"}
 
-    def cmd_view_results(self) -> None:
-        """CLI: View vote results."""
-        pass
+        from server.crypto import CryptoManager
 
-    def cmd_voter_info(self) -> None:
-        """CLI: View registered voters."""
-        pass
+        voter_id = CryptoManager.generate_voter_id(name, surname, id_number)
+        token = CryptoManager.generate_voter_token(voter_id)
 
-    def cmd_blockchain_info(self) -> None:
-        """CLI: View blockchain information."""
-        pass
+        success, message = self.database.register_voter(
+            voter_id,
+            f"{name} {surname}",
+            token
+        )
 
-    def cmd_verify_integrity(self) -> None:
-        """CLI: Verify blockchain integrity."""
-        pass
+        if not success:
+            return {"error": message}
 
-    def cmd_help(self) -> None:
-        """CLI: Show help information."""
-        pass
+        return {
+            "voter_id": voter_id,
+            "token": token
+        }
+
+    def handle_vote(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        voter_id = payload.get("voter_id")
+        candidate = payload.get("candidate")
+        token = payload.get("token")
+
+        if not all([voter_id, candidate, token]):
+            return {"error": "Missing vote fields"}
+
+        from server.crypto import CryptoManager
+
+        valid, msg = CryptoManager.verify_voter_token(token, voter_id)
+
+        if not valid:
+            return {"error": msg}
+
+        voter = self.database.get_voter(voter_id)
+
+        if not voter:
+            return {"error": "Voter not registered"}
+
+        if voter["has_voted"]:
+            return {"error": "Already voted"}
+
+        success, vote_hash = self.blockchain.add_vote(voter_id, candidate)
+
+        if not success:
+            return {"error": vote_hash}
+
+        vote = self.blockchain.pending_votes[-1]
+
+        self.database.save_vote(
+            vote.vote_hash,
+            vote.voter_id,
+            vote.candidate,
+            vote.timestamp
+        )
+
+        self.database.mark_voter_as_voted(voter_id)
+
+        return {"vote_hash": vote.vote_hash}
+
+    def handle_verify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        vote_hash = payload.get("vote_hash")
+
+        if not vote_hash:
+            return {"error": "Missing vote_hash"}
+
+        valid, message = self.blockchain.verify_vote(vote_hash)
+
+        return {
+            "valid": valid,
+            "message": message
+        }
+
+    def handle_results(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "results": self.blockchain.get_results()
+        }
+
+    def handle_status(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        valid, _ = self.blockchain.is_chain_valid()
+
+        return {
+            "status": "ok" if valid else "error",
+            "blocks": len(self.blockchain.chain),
+            "pending_votes": len(self.blockchain.pending_votes)
+        }
+
+    def handle_candidates(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        results = self.blockchain.get_results()
+        return {"candidates": list(results.keys())}
 
 
 def main():
-    """Main entry point for voting server."""
-    if len(sys.argv) < 2:
-        print("Usage: python server.py <config.json>")
-        print("Example: python server.py config.json")
-        sys.exit(1)
+    server = VotingServer()
+    ok, msg = server.start()
 
-    config_file = sys.argv[1]
-
-    # Load configuration
-    if not Path(config_file).exists():
-        print(f"Error: Config file not found: {config_file}")
-        sys.exit(1)
+    if not ok:
+        print("Failed to start:", msg)
+        return
 
     try:
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-    except Exception as e:
-        print(f"Error loading config: {e}")
-        sys.exit(1)
-
-    # Initialize and run server
-    server = VotingServer(
-        host=config.get('host', 'localhost'),
-        port=config.get('port', 5000),
-        db_config=config.get('database', {})
-    )
-
-    try:
-        if server.initialize_components():
-            server.start_network_server()
-            server.run_cli()
-        else:
-            print("Failed to initialize server components")
-            sys.exit(1)
+        while True:
+            pass
     except KeyboardInterrupt:
-        print("\n\nInterrupt received. Shutting down...")
-        server.shutdown()
-    except Exception as e:
-        print(f"Error running server: {e}")
-        server.shutdown()
-        sys.exit(1)
+        server.stop()
 
 
 if __name__ == "__main__":
