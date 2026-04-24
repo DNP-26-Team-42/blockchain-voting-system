@@ -18,106 +18,113 @@ def setup_logging(
     console: bool = True,
     file_handler: bool = True
 ) -> logging.Logger:
-    """
-    Setup logging for a module with file and console handlers.
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.propagate = False
 
-    Args:
-        name: Logger name (usually __name__)
-        log_file: Optional path to log file
-        level: Logging level
-        console: Whether to output to console
-        file_handler: Whether to write to file
+    # чтобы не добавлять хендлеры повторно
+    if logger.handlers:
+        return logger
 
-    Returns:
-        Configured logger instance
-    """
-    pass
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+
+    if console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
+    if file_handler and log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_h = logging.handlers.RotatingFileHandler(
+            log_path,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8"
+        )
+        file_h.setFormatter(formatter)
+        logger.addHandler(file_h)
+
+    return logger
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get logger for module.
-
-    Args:
-        name: Logger name (usually __name__)
-
-    Returns:
-        Logger instance
-    """
-    pass
+    return logging.getLogger(name)
 
 
 def configure_root_logger(
     log_file: Optional[str] = None,
     level: int = logging.INFO
 ) -> None:
-    """
-    Configure root logger for entire application.
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
 
-    Args:
-        log_file: Optional log file path
-        level: Logging level
-    """
-    pass
+    # очистка старых хендлеров
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
 
 def create_log_directory(log_dir: str = "logs") -> Path:
-    """
-    Create logs directory if it doesn't exist.
-
-    Args:
-        log_dir: Directory path
-
-    Returns:
-        Path to logs directory
-    """
-    pass
+    path = Path(log_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def get_log_filename(prefix: str = "voting_system") -> str:
-    """
-    Generate log filename with timestamp.
-
-    Args:
-        prefix: Log file prefix
-
-    Returns:
-        Filename with timestamp
-    """
-    pass
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{prefix}_{timestamp}.log"
 
 
 class LoggerFactory:
-    """Factory for creating configured loggers."""
-
     _loggers = {}
     _configured = False
+    _level = logging.INFO
+    _log_file = None
 
     @classmethod
     def configure(cls, log_file: Optional[str] = None, level: int = logging.INFO) -> None:
-        """
-        Configure logger factory.
-
-        Args:
-            log_file: Optional log file path
-            level: Logging level
-        """
-        pass
+        cls._configured = True
+        cls._level = level
+        cls._log_file = log_file
 
     @classmethod
     def get_logger(cls, name: str) -> logging.Logger:
-        """
-        Get or create logger for name.
+        if name in cls._loggers:
+            return cls._loggers[name]
 
-        Args:
-            name: Logger name
+        logger = setup_logging(
+            name=name,
+            log_file=cls._log_file,
+            level=cls._level
+        )
 
-        Returns:
-            Logger instance
-        """
-        pass
+        cls._loggers[name] = logger
+        return logger
 
     @classmethod
     def close_all(cls) -> None:
-        """Close all logger file handlers."""
-        pass
+        for logger in cls._loggers.values():
+            for handler in logger.handlers:
+                handler.close()
+            logger.handlers.clear()
+
+        cls._loggers.clear()
