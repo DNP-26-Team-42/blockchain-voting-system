@@ -5,428 +5,472 @@ Common helpers for validation, formatting, logging, and data processing.
 
 from typing import Optional, List, Tuple
 from datetime import datetime
+from pathlib import Path
 import logging
 import re
 import json
+import random
 
-
-# ============ LOGGING SETUP ============
 
 def setup_logging(name: str, log_file: Optional[str] = None, level: int = logging.INFO) -> logging.Logger:
-    """
-    Setup logging for a module.
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.propagate = False
 
-    Args:
-        name: Logger name
-        log_file: Optional log file path
-        level: Logging level
+    if logger.handlers:
+        return logger
 
-    Returns:
-        Configured logger instance
-    """
-    pass
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if log_file:
+        path = Path(log_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_handler = logging.FileHandler(path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get logger for module."""
-    pass
+    return logging.getLogger(name)
 
-
-# ============ INPUT VALIDATION ============
 
 def validate_voter_name(name: str) -> Tuple[bool, str]:
-    """
-    Validate voter name format.
+    if not name or not name.strip():
+        return False, "Name is required"
 
-    Requirements:
-        - Non-empty, max 255 chars
-        - Only letters and spaces
-        - At least 2 characters
+    name = name.strip()
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    if len(name) < 2:
+        return False, "Name must contain at least 2 characters"
+
+    if len(name) > 255:
+        return False, "Name is too long"
+
+    if not re.fullmatch(r"[A-Za-zА-Яа-яЁё\s'-]+", name):
+        return False, "Name may contain only letters and spaces"
+
+    return True, "Name is valid"
 
 
 def validate_voter_surname(surname: str) -> Tuple[bool, str]:
-    """
-    Validate voter surname format.
+    if not surname or not surname.strip():
+        return False, "Surname is required"
 
-    Requirements:
-        - Non-empty, max 255 chars
-        - Only letters and spaces
-        - At least 2 characters
+    surname = surname.strip()
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    if len(surname) < 2:
+        return False, "Surname must contain at least 2 characters"
+
+    if len(surname) > 255:
+        return False, "Surname is too long"
+
+    if not re.fullmatch(r"[A-Za-zА-Яа-яЁё\s'-]+", surname):
+        return False, "Surname may contain only letters and spaces"
+
+    return True, "Surname is valid"
 
 
 def validate_voter_id(id_number: str) -> Tuple[bool, str]:
-    """
-    Validate voter ID format.
+    if not id_number or not id_number.strip():
+        return False, "Voter ID is required"
 
-    Requirements:
-        - Non-empty, max 50 chars
-        - Alphanumeric with optional hyphens/slashes
-        - No special characters except - /
+    id_number = id_number.strip()
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    if len(id_number) > 50:
+        return False, "Voter ID is too long"
+
+    if not re.fullmatch(r"[A-Za-z0-9\-/]+", id_number):
+        return False, "Voter ID may contain only letters, digits, hyphens and slashes"
+
+    return True, "Voter ID is valid"
 
 
 def validate_candidate_name(candidate: str) -> Tuple[bool, str]:
-    """
-    Validate candidate name format.
+    if not candidate or not candidate.strip():
+        return False, "Candidate name is required"
 
-    Requirements:
-        - Non-empty, max 255 chars
-        - Letters, spaces, and basic punctuation
-        - No unusual characters
+    candidate = candidate.strip()
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    if len(candidate) > 255:
+        return False, "Candidate name is too long"
+
+    if not re.fullmatch(r"[A-Za-zА-Яа-яЁё0-9\s.,'-]+", candidate):
+        return False, "Candidate name contains invalid characters"
+
+    return True, "Candidate name is valid"
 
 
 def validate_voter_email(email: str) -> Tuple[bool, str]:
-    """
-    Validate email format (optional feature).
+    if not email:
+        return False, "Email is required"
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+
+    if not re.fullmatch(pattern, email.strip()):
+        return False, "Invalid email format"
+
+    return True, "Email is valid"
 
 
 def validate_password(password: str, min_length: int = 8) -> Tuple[bool, str]:
-    """
-    Validate password strength.
+    if not password:
+        return False, "Password is required"
 
-    Requirements:
-        - Minimum length (default 8)
-        - Mix of letters, numbers, special chars
+    if len(password) < min_length:
+        return False, f"Password must contain at least {min_length} characters"
 
-    Returns:
-        (is_valid: bool, error_message: str)
-    """
-    pass
+    if not re.search(r"[A-Za-z]", password):
+        return False, "Password must contain at least one letter"
+
+    if not re.search(r"\d", password):
+        return False, "Password must contain at least one digit"
+
+    if not re.search(r"[^A-Za-z0-9]", password):
+        return False, "Password must contain at least one special character"
+
+    return True, "Password is valid"
 
 
 def sanitize_input(user_input: str, max_length: int = 255) -> str:
-    """
-    Sanitize user input to prevent injection attacks.
+    if user_input is None:
+        return ""
 
-    Args:
-        user_input: Input to sanitize
-        max_length: Maximum allowed length
-
-    Returns:
-        Sanitized input string
-    """
-    pass
+    value = str(user_input).strip()
+    value = re.sub(r"[<>]", "", value)
+    value = value.replace("\x00", "")
+    return value[:max_length]
 
 
 def is_valid_ipv4(ip: str) -> bool:
-    """
-    Validate IPv4 address format.
+    if not ip:
+        return False
 
-    Args:
-        ip: IP address string
+    parts = ip.split(".")
 
-    Returns:
-        True if valid IPv4
-    """
-    pass
+    if len(parts) != 4:
+        return False
+
+    for part in parts:
+        if not part.isdigit():
+            return False
+
+        number = int(part)
+
+        if number < 0 or number > 255:
+            return False
+
+    return True
 
 
 def is_valid_port(port: int) -> bool:
-    """
-    Validate port number (1-65535).
-
-    Args:
-        port: Port number
-
-    Returns:
-        True if valid port
-    """
-    pass
+    return isinstance(port, int) and 1 <= port <= 65535
 
 
 def is_valid_hostname(hostname: str) -> bool:
-    """Validate hostname format."""
-    pass
+    if not hostname:
+        return False
 
+    if hostname == "localhost":
+        return True
 
-# ============ TIMESTAMP OPERATIONS ============
+    if is_valid_ipv4(hostname):
+        return True
+
+    pattern = r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*$"
+    return bool(re.fullmatch(pattern, hostname))
+
 
 def get_current_datetime() -> str:
-    """
-    Get current datetime as ISO format string.
-
-    Returns:
-        ISO format timestamp (e.g., "2024-01-15T10:30:45.123456")
-    """
-    pass
+    return datetime.utcnow().isoformat()
 
 
 def get_current_timestamp_ms() -> int:
-    """Get current timestamp in milliseconds."""
-    pass
+    return int(datetime.utcnow().timestamp() * 1000)
 
 
 def get_current_timestamp_unix() -> float:
-    """Get current Unix timestamp."""
-    pass
+    return datetime.utcnow().timestamp()
 
 
 def format_timestamp(dt: Optional[datetime] = None) -> str:
-    """
-    Get formatted timestamp.
-
-    Args:
-        dt: Datetime object (current time if not provided)
-
-    Returns:
-        Formatted timestamp string
-    """
-    pass
+    dt = dt or datetime.utcnow()
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def parse_timestamp(timestamp_str: str) -> Optional[datetime]:
-    """
-    Parse timestamp string to datetime object.
-
-    Args:
-        timestamp_str: ISO format timestamp string
-
-    Returns:
-        Datetime object or None if parsing fails
-    """
-    pass
+    try:
+        return datetime.fromisoformat(timestamp_str)
+    except (TypeError, ValueError):
+        return None
 
 
 def timestamp_to_readable(timestamp_str: str) -> str:
-    """
-    Convert ISO timestamp to readable format.
+    dt = parse_timestamp(timestamp_str)
 
-    Args:
-        timestamp_str: ISO timestamp
+    if dt is None:
+        return "Invalid timestamp"
 
-    Returns:
-        Human-readable format (e.g., "Jan 15, 2024 10:30 AM")
-    """
-    pass
+    return dt.strftime("%b %d, %Y %I:%M %p")
 
 
 def get_timestamp_difference(ts1: str, ts2: str) -> Optional[float]:
-    """
-    Get difference between two timestamps in seconds.
+    first = parse_timestamp(ts1)
+    second = parse_timestamp(ts2)
 
-    Args:
-        ts1: First ISO timestamp
-        ts2: Second ISO timestamp
+    if first is None or second is None:
+        return None
 
-    Returns:
-        Difference in seconds or None if parsing fails
-    """
-    pass
+    return abs((second - first).total_seconds())
 
-
-# ============ FORMATTING ============
 
 def format_vote_results(results: dict) -> str:
-    """
-    Format vote results for display.
+    if not results:
+        return "No votes recorded."
 
-    Args:
-        results: Dictionary with candidate names and vote counts
+    total = sum(results.values())
+    lines = ["Voting results:", "-" * 40]
 
-    Returns:
-        Formatted results string
-    """
-    pass
+    for candidate, count in sorted(results.items(), key=lambda item: item[1], reverse=True):
+        percentage = calculate_percentage(count, total)
+        lines.append(f"{candidate}: {count} votes ({percentage:.2f}%)")
+
+    lines.append("-" * 40)
+    lines.append(f"Total votes: {total}")
+
+    return "\n".join(lines)
 
 
 def format_blockchain_info(blockchain_data: dict) -> str:
-    """
-    Format blockchain information for display.
+    if not blockchain_data:
+        return "No blockchain information available."
 
-    Args:
-        blockchain_data: Blockchain statistics dictionary
+    lines = ["Blockchain information:", "-" * 40]
 
-    Returns:
-        Formatted blockchain info string
-    """
-    pass
+    for key, value in blockchain_data.items():
+        lines.append(f"{key}: {value}")
+
+    return "\n".join(lines)
 
 
 def format_json(data: dict, indent: int = 2) -> str:
-    """Format dictionary as pretty JSON."""
-    pass
+    return json.dumps(data, indent=indent, sort_keys=True, ensure_ascii=False)
 
 
 def format_table(headers: List[str], rows: List[List[str]]) -> str:
-    """
-    Format data as ASCII table.
+    if not headers:
+        return ""
 
-    Args:
-        headers: Column headers
-        rows: List of row data
+    all_rows = [headers] + rows
+    widths = [
+        max(len(str(row[index])) for row in all_rows)
+        for index in range(len(headers))
+    ]
 
-    Returns:
-        Formatted table string
-    """
-    pass
+    separator = "+".join("-" * (width + 2) for width in widths)
+
+    def make_row(row: List[str]) -> str:
+        cells = [
+            f" {str(row[index]).ljust(widths[index])} "
+            for index in range(len(headers))
+        ]
+        return "|" + "|".join(cells) + "|"
+
+    lines = [separator, make_row(headers), separator]
+
+    for row in rows:
+        lines.append(make_row(row))
+
+    lines.append(separator)
+
+    return "\n".join(lines)
 
 
 def truncate_string(text: str, max_length: int = 50, suffix: str = "...") -> str:
-    """Truncate string with suffix if too long."""
-    pass
+    if text is None:
+        return ""
 
+    text = str(text)
 
-# ============ DATA CONVERSION ============
+    if len(text) <= max_length:
+        return text
+
+    return text[: max_length - len(suffix)] + suffix
+
 
 def dict_to_json_str(data: dict) -> str:
-    """Convert dictionary to JSON string."""
-    pass
+    return json.dumps(data, ensure_ascii=False)
 
 
 def json_str_to_dict(json_str: str) -> Optional[dict]:
-    """Convert JSON string to dictionary."""
-    pass
+    try:
+        data = json.loads(json_str)
+        return data if isinstance(data, dict) else None
+    except (TypeError, json.JSONDecodeError):
+        return None
 
 
 def list_to_json_str(data: list) -> str:
-    """Convert list to JSON string."""
-    pass
+    return json.dumps(data, ensure_ascii=False)
 
 
 def json_str_to_list(json_str: str) -> Optional[list]:
-    """Convert JSON string to list."""
-    pass
+    try:
+        data = json.loads(json_str)
+        return data if isinstance(data, list) else None
+    except (TypeError, json.JSONDecodeError):
+        return None
 
-
-# ============ FILE OPERATIONS ============
 
 def read_json_file(file_path: str) -> Optional[dict]:
-    """
-    Read and parse JSON file.
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
 
-    Args:
-        file_path: Path to JSON file
-
-    Returns:
-        Parsed data or None if error
-    """
-    pass
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def write_json_file(file_path: str, data: dict) -> Tuple[bool, str]:
-    """
-    Write data to JSON file.
+    try:
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-    Args:
-        file_path: Path to write to
-        data: Data to write
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(data, file, indent=2, ensure_ascii=False)
 
-    Returns:
-        (success: bool, message: str)
-    """
-    pass
+        return True, "File written successfully"
+    except OSError as error:
+        return False, str(error)
 
 
 def file_exists(file_path: str) -> bool:
-    """Check if file exists."""
-    pass
+    return Path(file_path).exists()
 
 
 def create_directory(dir_path: str) -> Tuple[bool, str]:
-    """
-    Create directory if it doesn't exist.
+    try:
+        Path(dir_path).mkdir(parents=True, exist_ok=True)
+        return True, "Directory created"
+    except OSError as error:
+        return False, str(error)
 
-    Returns:
-        (success: bool, message: str)
-    """
-    pass
-
-
-# ============ STRING OPERATIONS ============
 
 def remove_whitespace(text: str) -> str:
-    """Remove all whitespace from string."""
-    pass
+    return re.sub(r"\s+", "", text or "")
 
 
 def to_snake_case(text: str) -> str:
-    """Convert camelCase to snake_case."""
-    pass
+    if not text:
+        return ""
+
+    text = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", text)
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", text)
+    text = text.replace("-", "_").replace(" ", "_")
+
+    return text.lower()
 
 
 def to_camel_case(text: str) -> str:
-    """Convert snake_case to camelCase."""
-    pass
+    if not text:
+        return ""
+
+    parts = text.split("_")
+    return parts[0] + "".join(part.capitalize() for part in parts[1:])
 
 
 def capitalize_first(text: str) -> str:
-    """Capitalize first letter."""
-    pass
+    if not text:
+        return ""
 
+    return text[0].upper() + text[1:]
 
-# ============ STATISTICS ============
 
 def calculate_percentage(value: int, total: int) -> float:
-    """Calculate percentage."""
-    pass
+    if total == 0:
+        return 0.0
+
+    return (value / total) * 100
 
 
 def get_max_value_key(data: dict) -> Optional[str]:
-    """Get key with maximum value from dictionary."""
-    pass
+    if not data:
+        return None
+
+    return max(data, key=data.get)
 
 
 def get_min_value_key(data: dict) -> Optional[str]:
-    """Get key with minimum value from dictionary."""
-    pass
+    if not data:
+        return None
+
+    return min(data, key=data.get)
 
 
 def calculate_average(values: List[float]) -> float:
-    """Calculate average of values."""
-    pass
+    if not values:
+        return 0.0
 
+    return sum(values) / len(values)
 
-# ============ MISC ============
 
 def generate_random_string(length: int = 32, charset: str = "abcdefghijklmnopqrstuvwxyz0123456789") -> str:
-    """Generate random string."""
-    pass
+    return "".join(random.choice(charset) for _ in range(length))
 
 
 def chunk_list(lst: List, chunk_size: int) -> List[List]:
-    """Split list into chunks."""
-    pass
+    if chunk_size <= 0:
+        return []
+
+    return [lst[index:index + chunk_size] for index in range(0, len(lst), chunk_size)]
 
 
 def flatten_list(lst: List) -> List:
-    """Flatten nested list."""
-    pass
+    result = []
+
+    for item in lst:
+        if isinstance(item, list):
+            result.extend(flatten_list(item))
+        else:
+            result.append(item)
+
+    return result
 
 
 def remove_duplicates(lst: List) -> List:
-    """Remove duplicates from list while preserving order."""
-    pass
+    result = []
+    seen = set()
+
+    for item in lst:
+        marker = json.dumps(item, sort_keys=True) if isinstance(item, (dict, list)) else item
+
+        if marker not in seen:
+            seen.add(marker)
+            result.append(item)
+
+    return result
 
 
 def print_section(title: str, width: int = 80) -> None:
-    """Print formatted section title."""
-    pass
+    line = "=" * width
+    print(line)
+    print(title.center(width))
+    print(line)
 
 
 def print_table_row(cells: List[str], widths: List[int], separator: str = "|") -> None:
-    """Print formatted table row."""
-    pass
+    formatted = [
+        str(cell).ljust(widths[index])
+        for index, cell in enumerate(cells)
+    ]
+    print(separator + separator.join(formatted) + separator)
+    
